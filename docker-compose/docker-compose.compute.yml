@@ -17,3 +17,4 @@ services:
         user: root
         command:
             - '--path.rootfs=/host'
+        pull_policy: never

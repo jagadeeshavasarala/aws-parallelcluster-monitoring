@@ -13,6 +13,7 @@ services:
         restart: unless-stopped
         image: prom/pushgateway
         user: root
+        pull_policy: never
     prometheus:
         container_name: prometheus
         network_mode: host
@@ -32,6 +33,7 @@ services:
             - '--web.console.templates=/usr/share/prometheus/consoles'
             - '--web.external-url=/prometheus/'
             - '--web.route-prefix=/'
+        pull_policy: never
     grafana:
         container_name: grafana
         network_mode: host
@@ -47,6 +49,7 @@ services:
             - 'grafana-data:/var/lib/grafana'
         image: grafana/grafana
         user: root
+        pull_policy: never
     prometheus-node-exporter:
         container_name: node-exporter
         network_mode: host
@@ -58,6 +61,7 @@ services:
         user: root
         command:
             - '--path.rootfs=/host'
+        pull_policy: never
     nginx:
         container_name: nginx
         network_mode: host
@@ -69,6 +73,7 @@ services:
             - '/home/$cfn_cluster_user/__MONITORING_DIR__/www:/usr/share/nginx/html'
         image: nginx
         user: root
+        pull_policy: never
 volumes:
     prometheus-data:
     grafana-data:
