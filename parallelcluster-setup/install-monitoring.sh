@@ -36,7 +36,7 @@ case "${cfn_node_type}" in
 		aws s3api get-object --bucket $cluster_s3_bucket --key $cluster_config_s3_key --region $cfn_region --version-id $cluster_config_version ${monitoring_home}/parallelcluster-setup/cluster-config.json
 
 		chown $cfn_cluster_user:$cfn_cluster_user -R /home/$cfn_cluster_user
-		chown $cfn_cluster_user:$cfn_cluster_user -R ${monitoring_home}
+		chmod 777 -R ${monitoring_home}
 		chmod +x ${monitoring_home}/custom-metrics/*
 
 		cp -rp ${monitoring_home}/custom-metrics/* /usr/local/bin/
