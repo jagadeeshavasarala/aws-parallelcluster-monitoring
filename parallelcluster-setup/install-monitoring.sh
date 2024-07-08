@@ -10,7 +10,7 @@
 . /etc/parallelcluster/cfnconfig
 
 monitoring_dir_name=aws-parallelcluster-monitoring
-monitoring_home="/home/${cfn_cluster_user}/${monitoring_dir_name}"
+monitoring_home="/${monitoring_dir_name}"
 
 echo "$> variable monitoring_dir_name -> ${monitoring_dir_name}"
 echo "$> variable monitoring_home -> ${monitoring_home}"
@@ -98,9 +98,9 @@ case "${cfn_node_type}" in
 		echo "$> Compute Instances Type EC2 -> ${compute_instance_type}"
 		echo "$> GPUS Instances EC2 -> ${gpu_instances}"
 		if [[ $compute_instance_type =~ $gpu_instances ]]; then
-			/usr/local/bin/docker-compose -f /home/${cfn_cluster_user}/${monitoring_dir_name}/docker-compose/docker-compose.compute.gpu.yml -p monitoring-compute up -d
+			/usr/local/bin/docker-compose -f ${monitoring_dir_name}/docker-compose/docker-compose.compute.gpu.yml -p monitoring-compute up -d
         else
-			/usr/local/bin/docker-compose -f /home/${cfn_cluster_user}/${monitoring_dir_name}/docker-compose/docker-compose.compute.yml -p monitoring-compute up -d
+			/usr/local/bin/docker-compose -f ${monitoring_dir_name}/docker-compose/docker-compose.compute.yml -p monitoring-compute up -d
         fi
 	;;
 esac
