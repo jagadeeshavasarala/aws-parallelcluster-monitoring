@@ -73,7 +73,9 @@ case "${cfn_node_type}" in
 
 		cp -rp ${monitoring_home}/nginx/conf.d/* /etc/nginx/conf.d/
 		cp -rp ${monitoring_home}/nginx/ssl/* /etc/ssl/
-		
+
+		systemctl restart nginx
+
 		/usr/local/bin/docker-compose --env-file /etc/parallelcluster/cfnconfig -f ${monitoring_home}/docker-compose/docker-compose.master.yml -p monitoring-master up -d
 
 		# Download and build prometheus-slurm-exporter
