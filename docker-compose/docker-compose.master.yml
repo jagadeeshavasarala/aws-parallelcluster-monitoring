@@ -61,18 +61,6 @@ services:
         command:
             - '--path.rootfs=/host'
         pull_policy: never
-    nginx:
-        container_name: nginx
-        network_mode: host
-        pid: host
-        restart: unless-stopped
-        volumes:
-            - '/home/$cfn_cluster_user/__MONITORING_DIR__/nginx/conf.d:/etc/nginx/conf.d/'
-            - '/home/$cfn_cluster_user/__MONITORING_DIR__/nginx/ssl:/etc/ssl/'
-            - '/home/$cfn_cluster_user/__MONITORING_DIR__/www:/usr/share/nginx/html'
-        image: nginx
-        user: root
-        pull_policy: never
 volumes:
     prometheus-data:
     grafana-data:
