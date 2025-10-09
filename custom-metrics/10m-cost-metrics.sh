@@ -1,5 +1,5 @@
 #!/bin/bash
-set -x
+set -euo pipefail
 
 # This script is intended to be run as a cron job every 10 minutes to collect and report cost metrics.
 
@@ -59,9 +59,9 @@ EBS_PRICE=$(get_ebs_pricing "gp3")
 
 send_metrics() {
     metrics="$1"
-    instance_id="$2"
+    cluster_name="$2"
 
-    PROMETHEUS_URL="${PROMETHEUS_URL}/instance_id/${instance_id}"
+    PROMETHEUS_URL="${PROMETHEUS_URL}/cluster/${cluster_name}"
     if [[ -n "$metrics" ]]; then
         if printf "$metrics" | curl -s -X POST "$PROMETHEUS_URL" \
             --data-binary @- \
@@ -87,6 +87,7 @@ collect_pcluster_metrics() {
                   "Name=instance-state-name,Values=running" \
         --query 'Reservations[].Instances[].[InstanceId,InstanceType,Tags]' \
         --output json)
+    all_metrics=""
     echo "$instances" | jq -r '.[] | @base64' | while read -r instance_data; do
         instance_data=$(echo "$instance_data" | base64 -d)
         instance_id=$(echo "$instance_data" | jq -r '.[0]')
@@ -97,7 +98,7 @@ collect_pcluster_metrics() {
         instance_price=$(get_instance_pricing "$instance_type")
         instance_cost=$(echo "scale=5; $instance_price * ($CRON_JOB_INTERVAL / 60)" | bc -l)
         labels="instance_type=\"$instance_type\",node_name=\"$node_name\",queue=\"$queue_name\""
-        all_metrics="pcluster_node_cost{${labels}} ${instance_price}\n"
+        all_metrics="${all_metrics}pcluster_node_cost{${labels}} ${instance_price}\n"
         total_storage_cost="0"
         total_volume_size="0"
         volumes=$(aws ec2 describe-volumes \
@@ -117,8 +118,8 @@ collect_pcluster_metrics() {
             storage_labels="${labels},volume_size=\"${total_volume_size}\",volume_type=\"${volume_type}\",volume_id=\"${volume_id}\""
             all_metrics="${all_metrics}pcluster_storage_cost{${storage_labels}} ${total_storage_cost}\n"
         fi
-        send_metrics "$all_metrics" "$instance_id"
     done
+    send_metrics "$all_metrics" "${cluster_name}"
 }
 
 main() {
