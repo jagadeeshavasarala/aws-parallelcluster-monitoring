@@ -42,9 +42,6 @@ case "${cfn_node_type}" in
 		cp -rp ${monitoring_home}/custom-metrics/* /usr/local/bin/
 		mv ${monitoring_home}/prometheus-slurm-exporter/slurm_exporter.service /etc/systemd/system/
 
-		apt-get update
-		apt-get install -y jq bc curl yq
-
 		(crontab -l -u $cfn_cluster_user 2>/dev/null; echo "*/10 * * * * /usr/local/bin/10m-cost-metrics.sh") | crontab -u $cfn_cluster_user -
 
 		# replace tokens
