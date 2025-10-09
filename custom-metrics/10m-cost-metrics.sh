@@ -6,21 +6,20 @@ set -euo pipefail
 PROMETHEUS_URL="http://127.0.0.1:9091/metrics/job/cost"
 CLUSTER_CONFIG_FILE="/opt/parallelcluster/shared/cluster-config.yaml"
 REGION_NAME="US West (Oregon)"
+REGION_CODE="us-west-2"
 CRON_JOB_INTERVAL=10 # in minutes
 
+if [[ ! -f "$CLUSTER_CONFIG_FILE" ]]; then
+    echo "ERROR: Cluster config file not found at $CLUSTER_CONFIG_FILE" >&2
+    return 1
+fi
+cluster_name=$(yq -r '.Tags[] | select(.Key == "ClusterName") | .Value' "$CLUSTER_CONFIG_FILE" || echo "")
+if [[ -z "$cluster_name" ]]; then
+    echo "ERROR: Could not extract cluster name from config file" >&2
+    return 1
+fi
+echo "$cluster_name"
 
-get_cluster_name() {
-    if [[ ! -f "$CLUSTER_CONFIG_FILE" ]]; then
-        echo "ERROR: Cluster config file not found at $CLUSTER_CONFIG_FILE"
-        return 1
-    fi
-    cluster_name=$(yq -r '.Tags[] | select(.Key == "ClusterName") | .Value' "$CLUSTER_CONFIG_FILE" || echo "")
-    if [[ -z "$cluster_name" ]]; then
-        echo "ERROR: Could not extract cluster name from config file"
-        return 1
-    fi
-    echo "$cluster_name"
-}
 
 get_instance_pricing() {
     instance_type="$1"
@@ -40,7 +39,6 @@ get_instance_pricing() {
 }
 
 get_ebs_pricing() {
-    # per GB per hour
     volume_type="$1"
     pricing_data=$(aws pricing get-products \
         --service-code AmazonEC2 \
@@ -60,54 +58,51 @@ send_metrics() {
     metrics="$1"
 
     if [[ -n "$metrics" ]]; then
-        if printf "$metrics" | curl -s -X POST "$PROMETHEUS_URL" \
+        if printf "%s" "$metrics" | curl -s -X POST "$PROMETHEUS_URL" \
             --data-binary @- \
             --connect-timeout 10 \
             --max-time 10; then
             return 0
         else
-            echo "Failed to send metrics"
+            echo "Failed to send metrics" >&2
             return 1
         fi
     fi
 }
 
 collect_pcluster_metrics() {
-    cluster_name=$(get_cluster_name)
-    if [[ $? -ne 0 ]]; then
-        echo "ERROR: Failed to get cluster name"
-        return 1
-    fi
     instances=$(aws ec2 describe-instances \
         --filters "Name=tag:Application,Values=dockyard-pcluster" \
                   "Name=tag:ClusterName,Values=$cluster_name" \
                   "Name=instance-state-name,Values=running" \
         --query 'Reservations[].Instances[].[InstanceId,InstanceType,Tags]' \
+        --region "$REGION_CODE" \
         --output json)
-    all_metrics=""
-    echo "$instances" | jq -r '.[] | @base64' | while read -r instance_data; do
+    all_metrics=$(echo "$instances" | jq -r '.[] | @base64' | while read -r instance_data; do
         instance_data=$(echo "$instance_data" | base64 -d)
         instance_id=$(echo "$instance_data" | jq -r '.[0]')
         instance_type=$(echo "$instance_data" | jq -r '.[1]')
         tags=$(echo "$instance_data" | jq -r '.[2]')
         node_name=$(echo "$tags" | jq -r '.[] | select(.Key=="Name") | .Value')
-        queue_name=$(echo "$tags" | jq -r '.[] | select(.Key=="parallelcluster:queue-name") | .Value' || echo "")
+        queue_name=$(echo "$tags" | jq -r '.[] | select(.Key=="parallelcluster:queue-name") | .Value'|| echo "HeadNode")
         instance_price=$(get_instance_pricing "$instance_type")
         instance_cost=$(echo "scale=5; $instance_price * ($CRON_JOB_INTERVAL / 60)" | bc -l)
         labels="instance_type=\"$instance_type\",node_name=\"$node_name\",queue=\"$queue_name\",instance_id=\"$instance_id\""
-        total_storage_cost="0"
         volumes=$(aws ec2 describe-volumes \
             --filters "Name=attachment.instance-id,Values=$instance_id" \
             --query 'Volumes[].[VolumeId,VolumeType,Size]' \
+            --region "$REGION_CODE" \
             --output json)
+
         volume_id=$(echo "$volumes" | jq -r '.[0][0]')
         volume_type=$(echo "$volumes" | jq -r '.[0][1]')
         volume_size=$(echo "$volumes" | jq -r '.[0][2]')
-        total_storage_cost=$(echo "scale=5; $EBS_PRICE * $volume_size * ($CRON_JOB_INTERVAL / 60)" | bc -l)
+        storage_cost=$(echo "scale=5; $EBS_PRICE * $volume_size * ($CRON_JOB_INTERVAL / 60)" | bc -l)
         labels="${labels},volume_size=\"${volume_size}\",volume_type=\"${volume_type}\",volume_id=\"${volume_id}\""
-        total_cost=$(echo "scale=5; $instance_cost + $total_storage_cost" | bc -l)
-        all_metrics="${all_metrics}pcluster_instance_cost{${labels}} ${total_cost}\n"
-    done
+        total_cost=$(echo "scale=5; $instance_cost + $storage_cost" | bc -l)
+        printf "pcluster_instance_cost{%s} %s\n" "$labels" "$total_cost"
+
+    done)
     send_metrics "$all_metrics"
 }
 
