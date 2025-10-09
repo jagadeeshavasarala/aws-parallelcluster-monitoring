@@ -95,26 +95,18 @@ collect_pcluster_metrics() {
         instance_price=$(get_instance_pricing "$instance_type")
         instance_cost=$(echo "scale=5; $instance_price * ($CRON_JOB_INTERVAL / 60)" | bc -l)
         labels="instance_type=\"$instance_type\",node_name=\"$node_name\",queue=\"$queue_name\",instance_id=\"$instance_id\""
-        all_metrics="${all_metrics}pcluster_node_cost{${labels}} ${instance_cost}\n"
         total_storage_cost="0"
-        total_volume_size="0"
         volumes=$(aws ec2 describe-volumes \
             --filters "Name=attachment.instance-id,Values=$instance_id" \
             --query 'Volumes[].[VolumeId,VolumeType,Size]' \
             --output json)
-        if [[ -n "$volumes" && "$volumes" != "[]" ]]; then
-            for volume_data in $(echo "$volumes" | jq -r '.[] | @base64'); do
-                volume_data=$(echo "$volume_data" | base64 -d)
-                volume_id=$(echo "$volume_data" | jq -r '.[0]')
-                volume_type=$(echo "$volume_data" | jq -r '.[1]')
-                volume_size=$(echo "$volume_data" | jq -r '.[2]')
-                volume_cost=$(echo "scale=5; $EBS_PRICE * $volume_size * ($CRON_JOB_INTERVAL / 60)" | bc -l)
-                total_storage_cost=$(echo "scale=5; $total_storage_cost + $volume_cost" | bc -l)
-                total_volume_size=$(echo "scale=5; $total_volume_size + $volume_size" | bc -l)
-            done
-            storage_labels="${labels},volume_size=\"${total_volume_size}\",volume_type=\"${volume_type}\",volume_id=\"${volume_id}\""
-            all_metrics="${all_metrics}pcluster_storage_cost{${storage_labels}} ${total_storage_cost}\n"
-        fi
+        volume_id=$(echo "$volumes" | jq -r '.[0][0]')
+        volume_type=$(echo "$volumes" | jq -r '.[0][1]')
+        volume_size=$(echo "$volumes" | jq -r '.[0][2]')
+        total_storage_cost=$(echo "scale=5; $EBS_PRICE * $volume_size * ($CRON_JOB_INTERVAL / 60)" | bc -l)
+        labels="${labels},volume_size=\"${volume_size}\",volume_type=\"${volume_type}\",volume_id=\"${volume_id}\""
+        total_cost=$(echo "scale=5; $instance_cost + $total_storage_cost" | bc -l)
+        all_metrics="${all_metrics}pcluster_instance_cost{${labels}} ${total_cost}\n"
     done
     send_metrics "$all_metrics"
 }
