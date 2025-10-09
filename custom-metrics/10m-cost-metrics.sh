@@ -46,7 +46,8 @@ get_ebs_pricing() {
         --region us-east-1 \
         --query 'PriceList[0]' \
         --output text)
-    hourly_price=$(echo "$pricing_data" | jq -r '.terms.OnDemand | to_entries[0].value.priceDimensions | to_entries[0].value.pricePerUnit.USD')
+    monthly_price=$(echo "$pricing_data" | jq -r '.terms.OnDemand | to_entries[0].value.priceDimensions | to_entries[0].value.pricePerUnit.USD')
+    hourly_price=$(echo "scale=5; $monthly_price / (24 * 30)" | bc -l)
     echo "$hourly_price"
 }
 
