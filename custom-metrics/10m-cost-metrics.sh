@@ -59,7 +59,7 @@ send_metrics() {
 		if printf "%s\n" "$metrics" | curl -s -X PUT "$PROMETHEUS_URL" \
             --data-binary @- \
             --connect-timeout 10 \
-            --max-time 10; then
+            --max-time 60; then
             return 0
         else
             echo "Failed to send metrics"
@@ -76,7 +76,8 @@ collect_pcluster_metrics() {
         --query 'Reservations[].Instances[].[InstanceId,InstanceType,Tags]' \
         --region "$REGION_CODE" \
         --output json)
-    all_metrics=$(echo "$instances" | jq -r '.[] | @base64' | while read -r instance_data; do
+    all_metrics=""
+    for instance_data in $(echo "$instances" | jq -r '.[] | @base64'); do
         instance_data=$(echo "$instance_data" | base64 -d)
         instance_id=$(echo "$instance_data" | jq -r '.[0]')
         instance_type=$(echo "$instance_data" | jq -r '.[1]')
@@ -87,6 +88,7 @@ collect_pcluster_metrics() {
         instance_price=$(get_instance_pricing "$instance_type")
         instance_cost=$(echo "scale=5; $instance_price * ($CRON_JOB_INTERVAL / 60)" | bc -l)
         labels="instance_type=\"$instance_type\",node_name=\"$node_name\",queue=\"$queue_name\",instance_id=\"$instance_id\""
+        all_metrics="${all_metrics}pcluster_compute_cost{${labels}} ${instance_cost}"$'\n'
         volumes=$(aws ec2 describe-volumes \
             --filters "Name=attachment.instance-id,Values=$instance_id" \
             --query 'Volumes[].[VolumeId,VolumeType,Size]' \
@@ -97,10 +99,11 @@ collect_pcluster_metrics() {
         volume_size=$(echo "$volumes" | jq -r '.[0][2]')
         storage_cost=$(echo "scale=5; $EBS_PRICE * $volume_size * ($CRON_JOB_INTERVAL / 60)" | bc -l)
         labels="${labels},volume_size=\"${volume_size}\",volume_type=\"${volume_type}\",volume_id=\"${volume_id}\""
+        all_metrics="${all_metrics}pcluster_storage_cost{${labels}} ${storage_cost}"$'\n'
         total_cost=$(echo "scale=5; $instance_cost + $storage_cost" | bc -l)
-        printf "pcluster_instance_cost{%s} %s\n" "$labels" "$total_cost"
+        all_metrics="${all_metrics}pcluster_cost{${labels}} ${total_cost}"$'\n'
+    done
 
-    done)
     send_metrics "$all_metrics"
 }
 
