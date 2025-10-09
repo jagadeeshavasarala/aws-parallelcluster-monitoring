@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -x
 
 # This script is intended to be run as a cron job every 10 minutes to collect and report cost metrics.
 
@@ -10,16 +10,14 @@ REGION_CODE="us-west-2"
 CRON_JOB_INTERVAL=10 # in minutes
 
 if [[ ! -f "$CLUSTER_CONFIG_FILE" ]]; then
-    echo "ERROR: Cluster config file not found at $CLUSTER_CONFIG_FILE" >&2
+    echo "ERROR: Cluster config file not found at $CLUSTER_CONFIG_FILE"
     return 1
 fi
-cluster_name=$(yq -r '.Tags[] | select(.Key == "ClusterName") | .Value' "$CLUSTER_CONFIG_FILE" || echo "")
+cluster_name=$(yq -r '.Tags[] | select(.Key == "ClusterName") | .Value' "$CLUSTER_CONFIG_FILE")
 if [[ -z "$cluster_name" ]]; then
-    echo "ERROR: Could not extract cluster name from config file" >&2
+    echo "ERROR: Could not extract cluster name from config file"
     return 1
 fi
-echo "$cluster_name"
-
 
 get_instance_pricing() {
     instance_type="$1"
@@ -58,13 +56,13 @@ send_metrics() {
     metrics="$1"
 
     if [[ -n "$metrics" ]]; then
-        if printf "%s" "$metrics" | curl -s -X POST "$PROMETHEUS_URL" \
+		if printf "%s\n" "$metrics" | curl -s -X PUT "$PROMETHEUS_URL" \
             --data-binary @- \
             --connect-timeout 10 \
             --max-time 10; then
             return 0
         else
-            echo "Failed to send metrics" >&2
+            echo "Failed to send metrics"
             return 1
         fi
     fi
@@ -84,7 +82,8 @@ collect_pcluster_metrics() {
         instance_type=$(echo "$instance_data" | jq -r '.[1]')
         tags=$(echo "$instance_data" | jq -r '.[2]')
         node_name=$(echo "$tags" | jq -r '.[] | select(.Key=="Name") | .Value')
-        queue_name=$(echo "$tags" | jq -r '.[] | select(.Key=="parallelcluster:queue-name") | .Value'|| echo "HeadNode")
+        queue_name=$(echo "$tags" | jq -r '.[] | select(.Key=="parallelcluster:queue-name") | .Value')
+        queue_name=${queue_name:-"HeadNode"}
         instance_price=$(get_instance_pricing "$instance_type")
         instance_cost=$(echo "scale=5; $instance_price * ($CRON_JOB_INTERVAL / 60)" | bc -l)
         labels="instance_type=\"$instance_type\",node_name=\"$node_name\",queue=\"$queue_name\",instance_id=\"$instance_id\""
@@ -93,7 +92,6 @@ collect_pcluster_metrics() {
             --query 'Volumes[].[VolumeId,VolumeType,Size]' \
             --region "$REGION_CODE" \
             --output json)
-
         volume_id=$(echo "$volumes" | jq -r '.[0][0]')
         volume_type=$(echo "$volumes" | jq -r '.[0][1]')
         volume_size=$(echo "$volumes" | jq -r '.[0][2]')
