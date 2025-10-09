@@ -5,7 +5,6 @@
 # SPDX-License-Identifier: MIT-0
 #
 #
-set -euo pipefail
 
 #source the AWS ParallelCluster profile
 . /etc/parallelcluster/cfnconfig
