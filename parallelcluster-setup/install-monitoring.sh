@@ -42,10 +42,10 @@ case "${cfn_node_type}" in
 		cp -rp ${monitoring_home}/custom-metrics/* /usr/local/bin/
 		mv ${monitoring_home}/prometheus-slurm-exporter/slurm_exporter.service /etc/systemd/system/
 
-		sudo apt-get update
-		sudo apt-get install -y jq bc curl yq
+		apt-get update
+		apt-get install -y jq bc curl yq
 
-		sudo (crontab -l -u $cfn_cluster_user 2>/dev/null; echo "*/10 * * * * /usr/local/bin/10m-cost-metrics.sh") | crontab -u $cfn_cluster_user -
+		(crontab -l -u $cfn_cluster_user 2>/dev/null; echo "*/10 * * * * /usr/local/bin/10m-cost-metrics.sh") | crontab -u $cfn_cluster_user -
 
 		# replace tokens
 		sed -i "s/_S3_BUCKET_/${s3_bucket}/g"               	${monitoring_home}/grafana/dashboards/ParallelCluster.json
