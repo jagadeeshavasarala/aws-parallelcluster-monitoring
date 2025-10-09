@@ -5,7 +5,6 @@ set -euo pipefail
 
 PROMETHEUS_URL="http://127.0.0.1:9091/metrics/job/cost"
 CLUSTER_CONFIG_FILE="/opt/parallelcluster/shared/cluster-config.yaml"
-LOG_FILE="/tmp/cost-metrics.log"
 REGION_NAME="US West (Oregon)"
 CRON_JOB_INTERVAL=10 # in minutes
 
@@ -59,9 +58,7 @@ EBS_PRICE=$(get_ebs_pricing "gp3")
 
 send_metrics() {
     metrics="$1"
-    cluster_name="$2"
 
-    PROMETHEUS_URL="${PROMETHEUS_URL}/cluster/${cluster_name}"
     if [[ -n "$metrics" ]]; then
         if printf "$metrics" | curl -s -X POST "$PROMETHEUS_URL" \
             --data-binary @- \
@@ -97,8 +94,8 @@ collect_pcluster_metrics() {
         queue_name=$(echo "$tags" | jq -r '.[] | select(.Key=="parallelcluster:queue-name") | .Value' || echo "")
         instance_price=$(get_instance_pricing "$instance_type")
         instance_cost=$(echo "scale=5; $instance_price * ($CRON_JOB_INTERVAL / 60)" | bc -l)
-        labels="instance_type=\"$instance_type\",node_name=\"$node_name\",queue=\"$queue_name\""
-        all_metrics="${all_metrics}pcluster_node_cost{${labels}} ${instance_price}\n"
+        labels="instance_type=\"$instance_type\",node_name=\"$node_name\",queue=\"$queue_name\",instance_id=\"$instance_id\""
+        all_metrics="${all_metrics}pcluster_node_cost{${labels}} ${instance_cost}\n"
         total_storage_cost="0"
         total_volume_size="0"
         volumes=$(aws ec2 describe-volumes \
@@ -119,7 +116,7 @@ collect_pcluster_metrics() {
             all_metrics="${all_metrics}pcluster_storage_cost{${storage_labels}} ${total_storage_cost}\n"
         fi
     done
-    send_metrics "$all_metrics" "${cluster_name}"
+    send_metrics "$all_metrics"
 }
 
 main() {
