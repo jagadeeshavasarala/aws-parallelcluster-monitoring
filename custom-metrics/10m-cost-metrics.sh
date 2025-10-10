@@ -21,6 +21,7 @@ fi
 
 get_instance_pricing() {
     instance_type="$1"
+
     pricing_data=$(aws pricing get-products \
         --service-code AmazonEC2 \
         --filters Type=TERM_MATCH,Field=instanceType,Value="$instance_type" \
@@ -34,6 +35,19 @@ get_instance_pricing() {
         --output text)
     hourly_price=$(echo "$pricing_data" | jq -r '.terms.OnDemand | to_entries[0].value.priceDimensions | to_entries[0].value.pricePerUnit.USD')
     echo "$hourly_price"
+}
+
+get_instance_spot_pricing() {
+    instance_type="$1"
+    availability_zone="$2"
+    aws ec2 describe-spot-price-history \
+        --instance-types "$instance_type" \
+        --product-descriptions "Linux/UNIX" \
+        --availability-zone "$availability_zone" \
+        --max-results 1 \
+        --region "$REGION_CODE" \
+        --query 'SpotPriceHistory[0].SpotPrice' \
+        --output text
 }
 
 get_ebs_pricing() {
@@ -74,7 +88,7 @@ collect_pcluster_metrics() {
         --filters "Name=tag:Application,Values=dockyard-pcluster" \
                   "Name=tag:ClusterName,Values=$cluster_name" \
                   "Name=instance-state-name,Values=running" \
-        --query 'Reservations[].Instances[].[InstanceId,InstanceType,Tags]' \
+        --query 'Reservations[].Instances[].[InstanceId,InstanceType,Tags,InstanceLifecycle,Placement.AvailabilityZone]' \
         --region "$REGION_CODE" \
         --output json)
     all_metrics=""
@@ -83,12 +97,18 @@ collect_pcluster_metrics() {
         instance_id=$(echo "$instance_data" | jq -r '.[0]')
         instance_type=$(echo "$instance_data" | jq -r '.[1]')
         tags=$(echo "$instance_data" | jq -r '.[2]')
+        reservation=$(echo "$instance_data" | jq -r '.[3] // "ondemand"')
+        availability_zone=$(echo "$instance_data" | jq -r '.[4]')
         node_name=$(echo "$tags" | jq -r '.[] | select(.Key=="Name") | .Value')
         queue_name=$(echo "$tags" | jq -r '.[] | select(.Key=="parallelcluster:queue-name") | .Value')
         queue_name=${queue_name:-"HeadNode"}
-        instance_price=$(get_instance_pricing "$instance_type")
+        if [[ "$reservation" == "spot" ]]; then
+            instance_price=$(get_instance_spot_pricing "$instance_type" "$availability_zone")
+        else
+            instance_price=$(get_instance_pricing "$instance_type")
+        fi
         instance_cost=$(echo "scale=5; $instance_price * ($CRON_JOB_INTERVAL / 60)" | bc -l)
-        labels="instance_type=\"$instance_type\",node_name=\"$node_name\",queue=\"$queue_name\",instance_id=\"$instance_id\""
+        labels="instance_type=\"$instance_type\",node_name=\"$node_name\",queue=\"$queue_name\",instance_id=\"$instance_id\",reservation=\"$reservation\",az=\"$availability_zone\""
         all_metrics="${all_metrics}pcluster_compute_cost{${labels}} ${instance_cost}"$'\n'
         volumes=$(aws ec2 describe-volumes \
             --filters "Name=attachment.instance-id,Values=$instance_id" \
