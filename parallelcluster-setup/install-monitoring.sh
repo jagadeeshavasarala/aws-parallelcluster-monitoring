@@ -41,6 +41,8 @@ case "${cfn_node_type}" in
 		cp -rp ${monitoring_home}/custom-metrics/* /usr/local/bin/
 		mv ${monitoring_home}/prometheus-slurm-exporter/slurm_exporter.service /etc/systemd/system/
 
+		(crontab -l -u $cfn_cluster_user 2>/dev/null; echo "*/10 * * * * /usr/local/bin/10m-cost-metrics.sh") | crontab -u $cfn_cluster_user -
+
 		# replace tokens
 		sed -i "s/_S3_BUCKET_/${s3_bucket}/g"               	${monitoring_home}/grafana/dashboards/ParallelCluster.json
 		sed -i "s/__INSTANCE_ID__/${master_instance_id}/g"  	${monitoring_home}/grafana/dashboards/ParallelCluster.json

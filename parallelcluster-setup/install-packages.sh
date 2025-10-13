@@ -1,6 +1,6 @@
 #!/bin/bash
 
-apt-get -y install golang-go nginx
+apt-get -y install golang-go nginx jq bc curl yq
 
 curl -fsSL https://get.docker.com | sh
 
