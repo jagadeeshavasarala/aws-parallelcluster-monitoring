@@ -1,13 +1,13 @@
 #!/bin/bash
 set -x
 
-# This script is intended to be run as a cron job every 10 minutes to collect and report cost metrics.
+# This script is intended to be run as a cron job every 10 minutes to collect and report cost rate for 1 minute.
 
 PROMETHEUS_URL="http://127.0.0.1:9091/metrics/job/cost"
 CLUSTER_CONFIG_FILE="/opt/parallelcluster/shared/cluster-config.yaml"
 REGION_NAME="US West (Oregon)"
 REGION_CODE="us-west-2"
-CRON_JOB_INTERVAL=10 # in minutes
+COST_RATE_INTERVAL=1 # in minutes
 
 if [[ ! -f "$CLUSTER_CONFIG_FILE" ]]; then
     echo "ERROR: Cluster config file not found at $CLUSTER_CONFIG_FILE"
@@ -107,7 +107,7 @@ collect_pcluster_metrics() {
         else
             instance_price=$(get_instance_pricing "$instance_type")
         fi
-        instance_cost=$(echo "scale=5; $instance_price * ($CRON_JOB_INTERVAL / 60)" | bc -l)
+        instance_cost=$(echo "scale=5; $instance_price * ($COST_RATE_INTERVAL / 60)" | bc -l)
         labels="instance_type=\"$instance_type\",node_name=\"$node_name\",queue=\"$queue_name\",instance_id=\"$instance_id\",reservation=\"$reservation\",az=\"$availability_zone\""
         all_metrics="${all_metrics}pcluster_compute_cost{${labels}} ${instance_cost}"$'\n'
         volumes=$(aws ec2 describe-volumes \
@@ -118,7 +118,7 @@ collect_pcluster_metrics() {
         volume_id=$(echo "$volumes" | jq -r '.[0][0]')
         volume_type=$(echo "$volumes" | jq -r '.[0][1]')
         volume_size=$(echo "$volumes" | jq -r '.[0][2]')
-        storage_cost=$(echo "scale=5; $EBS_PRICE * $volume_size * ($CRON_JOB_INTERVAL / 60)" | bc -l)
+        storage_cost=$(echo "scale=5; $EBS_PRICE * $volume_size * ($COST_RATE_INTERVAL / 60)" | bc -l)
         labels="${labels},volume_size=\"${volume_size}\",volume_type=\"${volume_type}\",volume_id=\"${volume_id}\""
         all_metrics="${all_metrics}pcluster_storage_cost{${labels}} ${storage_cost}"$'\n'
         total_cost=$(echo "scale=5; $instance_cost + $storage_cost" | bc -l)
