@@ -84,7 +84,8 @@ case "${cfn_node_type}" in
 		##### Plese note this software package is under GPLv3 License #####
 		# More info here: https://github.com/vpenso/prometheus-slurm-exporter/blob/master/LICENSE
 		cd ${monitoring_home}
-		git clone https://github.com/vpenso/prometheus-slurm-exporter.git
+		# Version pinned to 0.21-legacy
+		git clone --branch 0.21-legacy https://github.com/vpenso/prometheus-slurm-exporter.git
 		# the export and git config statements below for compatibility on Ubuntu 22.x
 		export HOME=/root
 		git config --global --add safe.directory ${monitoring_home}/prometheus-slurm-exporter
